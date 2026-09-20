@@ -17,5 +17,4 @@ venv/
 .ipynb_checkpoints/
 
 # Local docs/notes -- kept in the folder for reference, not pushed to GitHub.
-README.md
 docs/*.md
