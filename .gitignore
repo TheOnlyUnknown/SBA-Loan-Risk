@@ -1,0 +1,17 @@
+# Raw/processed data -- large, reproducible from README download instructions,
+# and GitHub rejects files over 100MB anyway (the FY2020-Present CSV is ~180MB).
+data/raw/*.csv
+data/processed/*.csv
+data/processed/*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# OS/editor
+.DS_Store
+.vscode/
+.ipynb_checkpoints/
