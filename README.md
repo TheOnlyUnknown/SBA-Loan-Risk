@@ -34,3 +34,12 @@ Filtering to resolved loans (paid-in-full or charged-off) isn't enough on its ow
 
 ### Why default prediction, not approval prediction
 Originally, this project set out to predict whether a development application would be approved before being passed by council planning authorities in NSW or the ACT. That data proved inaccessible since NSW's planning API requires a manually issued key, and neither the ACT nor city open-data portals publish individual application records — so the project pivoted to SBA loan data instead, a structurally similar problem that was genuinely open. Looking closer, every loan in that dataset had already been approved and disbursed; lenders don't publish records of applications they rejected, largely for privacy and fair-lending reasons, so there was no rejected-application group left to compare against. That made approval prediction impossible with this data, so the objective became predicting which of those already-approved loans would eventually charge off instead of being paid in full — which, rather than a downgrade, is actually the more standard version of this problem: every lender already knows who they approved and needs to know which of those approvals carry real default risk. 
+
+### Feature Engineering Decisions
+The NAICS codes in the dataset consisted of full 6-digit codes, out of which 877 distinct codes in the modeling population, a median of only 10 loans per code. In such cases it is too sparse for a model to learn anything from most individual codes. 
+
+The fix to this was collapsing the NAICS code to its first two digits, i.e, if a code that says 722513 (Limited-Service Restaurants) is shortened to 72 (Accomodation and Food Services). Its just like picking the set rather than the subset so that we have more loan data in a section from which the model can learn from. At this level there are 24 categories with a median of 1054 loans each, so the collapse doesn't destroy the signal. 
+
+The function collapsing the NAICS code is casted with the zero-padding so that in case that any codes are of 5 or 4 digits, they are added with some extra 0's to make the numbers 6 digits across the feature/column, so that during the slicing of the string the first two digits are picked out correctly. 
+
+**Note**: The same logic applies to the zip code and congressional district fixes. 
