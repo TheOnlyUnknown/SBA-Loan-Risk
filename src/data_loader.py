@@ -5,7 +5,6 @@ RESOLVED_STATUSES = ["P I F","CHGOFF"]
 
 DATE_COLS = ["ApprovalDate", "PaidInFullDate", "ChargeOffDate"]
 
-
 ALLOWED_FEATURE_COLS = [
     "BorrState", "BorrZip",
     "BankName", "LenderType", "BankCity", "BankState", "BankZip",
@@ -47,13 +46,11 @@ def compute_seasoning_cutoff(df: pd.DataFrame, seasoning_percentile: float = 0.9
     return as_of_date, seasoning_months, cutoff_date
 
 def derive_naics_sector(df: pd.DataFrame) -> pd.DataFrame:
-
     df = df.copy()
     df["NaicsSector"] = df["NaicsCode"].astype(str).str.zfill(6).str[:2]
     return df
 
 def derive_lender_type(df: pd.DataFrame) -> pd.DataFrame:
-    
     df = df.copy()
     has_fdic = df["BankFDICNumber"].notna()
     has_ncua = df["BankNCUANumber"].notna()
@@ -64,26 +61,22 @@ def derive_lender_type(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def derive_is_franchise(df: pd.DataFrame) -> pd.DataFrame:
-   
     df = df.copy()
     df["IsFranchise"] = df["FranchiseCode"].notna().astype(int)
     return df
 
 def clean_zip_codes(df: pd.DataFrame) -> pd.DataFrame:
-    
     df = df.copy()
     df["BorrZip"] = df["BorrZip"].astype(str).str.zfill(5)
     df["BankZip"] = df["BankZip"].astype(str).str.zfill(5)
     return df
 
 def clean_business_age(df: pd.DataFrame) -> pd.DataFrame:
-    
     df = df.copy()
     df["BusinessAge"] = df["BusinessAge"].fillna("Unanswered")
     return df
 
 def clean_congressional_district(df: pd.DataFrame) -> pd.DataFrame:
-    
     df = df.copy()
     district = df["CongressionalDistrict"]
     district_str = district.fillna(-1).astype(int).astype(str)
@@ -92,7 +85,6 @@ def clean_congressional_district(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def apply_seasoning_cutoff(df: pd.DataFrame, cutoff_date) -> pd.DataFrame:
-    
     return df[df["ApprovalDate"] <= cutoff_date].copy()
 
 def load_and_label(csv_path: str, seasoning_percentile: float = 0.90):
