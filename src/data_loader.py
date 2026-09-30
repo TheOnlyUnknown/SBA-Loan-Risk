@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from .validation import validate_raw
+
 RESOLVED_STATUSES = ["P I F","CHGOFF"]
 
 DATE_COLS = ["ApprovalDate", "PaidInFullDate", "ChargeOffDate"]
@@ -89,6 +91,7 @@ def apply_seasoning_cutoff(df: pd.DataFrame, cutoff_date) -> pd.DataFrame:
 
 def load_and_label(csv_path: str, seasoning_percentile: float = 0.90):
     df = pd.read_csv(csv_path, low_memory=False)
+    df = validate_raw(df)
     df = parse_dates(df)
 
     resolved = filter_resolved(df)

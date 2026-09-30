@@ -11,7 +11,7 @@ DROP_FOR_MODELING = [
 ]
 
 def select_model_features(X: pd.DataFrame) -> pd.DataFrame:
-    return X.drop(columns=DROP_FOR_MODELING)
+    return X.drop(columns=DROP_FOR_MODELING, errors="ignore")
 
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
     numeric_cols = X.select_dtypes(include="number").columns.tolist()

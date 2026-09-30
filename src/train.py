@@ -1,3 +1,5 @@
+import json
+
 from src.data_loader import load_and_label
 from src.split import time_aware_split
 from src.features import select_model_features, build_xgboost_model
@@ -6,6 +8,7 @@ from src.model_io import save_model
 
 CSV_PATH = "data/raw/foia_7a_fy2020_present.csv"
 MODEL_PATH = "models/xgboost_pipeline.joblib"
+METADATA_PATH = "models/metadata.json"
 
 def main():
     X, y = load_and_label(CSV_PATH)
@@ -26,7 +29,21 @@ def main():
     best = best_f1_threshold(sweep)
     report = report_at_threshold(y_true, y_proba, best["threshold"])
 
+    metadata = {
+        "threshold": float(report["threshold"]),
+        "precision": float(report["precision"]),
+        "recall": float(report["recall"]),
+        "f1": float(report["f1"]),
+        "lift": float(report["lift"]),
+        "split_cutoff": str(cutoff),
+        "train_size": int(len(X_train)),
+        "test_size": int(len(X_test)),
+    }
+    with open(METADATA_PATH, "w") as f:
+        json.dump(metadata, f, indent=2)
+
     print("Model saved to:", MODEL_PATH)
+    print("Metadata saved to:", METADATA_PATH)
     print("Split cutoff:", cutoff)
     print("Train size:", len(X_train), "Test size:", len(X_test))
     print("Chosen threshold:", round(report["threshold"], 4))
