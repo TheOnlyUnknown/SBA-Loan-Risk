@@ -1,0 +1,16 @@
+data/
+docs/
+notebooks/
+tests/
+.git/
+.gitignore
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.vscode/
+*.md
+Dockerfile
+.dockerignore
+.Rhistory
