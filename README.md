@@ -103,7 +103,7 @@ The service runs in a `python:3.11-slim` container as a non-root user, with a `H
 ### Deployment
 The containerized service is deployed on Render's free tier, auto-deploying from GitHub on every push to `main`. Live at the URL below. Verified independently from a third machine entirely separate from both the development machine and Render's own infrastructure: `/health` returns 200, and `/predict` returns the exact same probability as every offline run throughout this project, confirming the deployed service is consistent with the training pipeline down to the floating-point value.
 
-**Live API:** https://sba-loan-risk.onrender.com (see `/docs` for interactive testing — the free tier spins down after inactivity, so the first request after idle time can take up to ~50 seconds to wake back up)
+**Live API:** https://sba-loan-risk.onrender.com/docs (interactive testing UI — the free tier spins down after inactivity, so the first request after idle time can take up to ~50 seconds to wake back up; the bare domain with no path returns 404, since only /health, /predict, and /docs are defined routes)
 
 ### Known Limitations / Future Work
 `scikit-learn` is currently unpinned in `requirements.txt` (`>=1.3`). The committed model was trained against scikit-learn 1.8.0, but a fresh environment today resolves 1.9.1, which produces an `InconsistentVersionWarning` on unpickling — predictions have remained correct so far, but scikit-learn's own documentation warns this can silently break across large enough version gaps. Worth pinning exactly to the trained version as a follow-up.
