@@ -1,5 +1,7 @@
 # SBA Loan Default Risk Predictor
 
+![CI](https://github.com/TheOnlyUnknown/sba-loan-risk/actions/workflows/ci.yml/badge.svg)
+
 ## Problem
 Evaluating SBA loan application at origination, to decide how to price and structure a loan with limited quantified sense of default risk beyond underwriter judgment. 
 
