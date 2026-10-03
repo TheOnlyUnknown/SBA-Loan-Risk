@@ -23,7 +23,7 @@ flowchart TD
     D --> E[Trained model<br/>saved to disk]
     E --> F[FastAPI service<br/>/predict /health]
     F --> G[Docker container]
-    G --> H[Deployed on Render/Fly.io]
+    G --> H[Deployed on Render]
 ```
 
 ### Leakage Rule
@@ -69,3 +69,41 @@ XGBoost was compared against the logistic regression baseline on the same held-o
 Before trusting that gap, two checks were run to rule out the obvious ways a result like this can be misleading. First, overfitting: training-set AUC was 0.962 against a test-set AUC of 0.926, a gap of only 0.037 — small enough to indicate the model learned real patterns rather than memorizing the training data. Second, calibration: binning predictions the same way as the baseline check showed predicted and actual charge-off rates tracking closely across every bin, with the model if anything slightly underestimating risk in the highest-risk bin (a conservative, not a dangerous, direction to be wrong in).
 
 This creates a real tension worth stating directly rather than glossing over: logistic regression was chosen as the baseline specifically because credit risk models need to be explainable to underwriters, and this result puts pressure on that reasoning — a gap this large can't be waved away with "we'll keep the simpler model on principle." The resolution: XGBoost is adopted as the model going forward, with feature importance or SHAP values used to recover explainability instead of relying on the model architecture being inherently simple. This mirrors how gradient-boosted models are actually used in production credit risk systems — accuracy and explainability aren't mutually exclusive if you're deliberate about which model does which job.
+
+### Model Interpretability (SHAP)
+A credit risk model that can't explain itself isn't usable by an underwriter, so SHAP values are computed against the trained XGBoost pipeline to recover per-loan and global feature attributions. `compute_shap_values` runs `shap.TreeExplainer` on the preprocessed feature matrix, and `global_feature_importance` ranks features by mean absolute SHAP value across the test set.
+
+One real bug surfaced building this: an early version densified the sparse preprocessed matrix (`.toarray()`) before computing SHAP values, which silently produced a completely different, wrong feature ranking — no error thrown, just quietly incorrect output. It was caught using SHAP's additivity property as a correctness check: for every row, the sum of that row's SHAP values plus the explainer's expected value must equal the model's raw margin output. When it didn't, that proved the explanations were wrong before they were ever trusted. The fix was removing `.toarray()` — XGBoost was trained on sparse input, where an absent entry means "missing," not "zero," and densifying broke that distinction. The lesson generalizes: an explainability method is only trustworthy if it's been verified against the actual model it's explaining, not just run and assumed correct.
+
+### Decision Threshold Selection
+XGBoost outputs a probability, not a decision — something has to translate "6% probability of charge-off" into "flag this loan or don't." `threshold_sweep` computes precision, recall, F1, and lift at every possible threshold using the test set's precision-recall curve, and `best_f1_threshold` picks the threshold that maximizes F1 as the default operating point.
+
+At the chosen threshold (0.3221): precision 0.771, recall 0.602, F1 0.676, and a lift of 12.6x over the base charge-off rate — meaning a loan flagged by the model is about 12.6 times more likely to actually charge off than a random loan in the portfolio. That lift number is the one that actually matters to the credit/risk persona this project is built for: it's a direct, concrete answer to "if we act on this model's flags, how much better off are we than acting randomly."
+
+### Raw-Data Validation (Pandera)
+Government FOIA data has no guaranteed schema contract, so the pipeline validates the raw CSV immediately after `pd.read_csv()`, before any parsing or feature derivation happens. The schema checks column types, value ranges (`GrossApproval > 0`, for instance), and a cross-column invariant that `SBAGuaranteedApproval` can never exceed `GrossApproval`. Validation runs with `lazy=True`, so every violation in a batch is reported at once instead of failing on the first — useful for actually fixing problems rather than discovering them one at a time.
+
+### Model Persistence
+`train.py` is the single, reproducible entry point for the full pipeline — load, validate, split, train, save — replacing what used to be ad-hoc interactive commands that were never saved anywhere. It persists two artifacts: `models/xgboost_pipeline.joblib` (the complete sklearn `Pipeline`, preprocessing and model together) and `models/metadata.json` (the chosen decision threshold, its precision/recall/F1/lift, and the train/test split cutoff date). The API loads both at startup rather than hardcoding the threshold as a magic number — if the model gets retrained with a different threshold, everything downstream picks it up automatically.
+
+### Test Suite
+29 unit tests (plus 4 more covering the API, 33 total) run against small, hand-built synthetic DataFrames rather than the full 388k-row CSV, so the suite runs in about two seconds and stays fully deterministic. Several tests exist specifically because they codify real bugs this project surfaced during development: NAICS codes silently losing a leading zero when cast from the CSV, FDIC/NCUA-based lender-type misclassification, and the guaranteed-exceeds-gross invariant. A future change that reintroduces any of those bugs fails loudly instead of shipping silently.
+
+### API (FastAPI)
+The service exposes `/health` and `/predict`. A `lifespan` context manager loads the model and metadata once at startup rather than on every request. Critically, `/predict` accepts raw loan fields exactly as a lender's own system would have them — a `NaicsCode`, the presence or absence of a `BankFDICNumber`/`BankNCUANumber` — and reuses the exact same derivation functions from the training pipeline (`derive_naics_sector`, `derive_lender_type`, etc.) server-side, rather than duplicating that logic in the API layer where it could silently drift out of sync with how the model was actually trained.
+
+Verified end-to-end against real historical loans: a loan that was actually paid in full scores low risk, matching an independently-computed run through the offline pipeline to floating-point precision; a loan that actually charged off is correctly flagged above threshold; a malformed request (a missing required field) returns a clean 422 instead of crashing.
+
+### Containerization (Docker)
+The service runs in a `python:3.11-slim` container as a non-root user, with a `HEALTHCHECK` against `/health` so orchestration tooling can tell whether the container is actually serving traffic. Two real, environment-specific bugs surfaced here that never appeared running the API directly on macOS: xgboost's PyPI package unconditionally requires a ~350MB NVIDIA CUDA library on any Linux platform regardless of whether a GPU exists, worked around by installing xgboost with `--no-deps`; and copying application files into the image before switching to the non-root user left them unreadable by that user, fixed with `COPY --chown`. Verified: the containerized `/predict` endpoint returns byte-identical predictions to every non-containerized run.
+
+### Continuous Integration
+`.github/workflows/ci.yml` runs the full test suite on every push and pull request to `main`. One real bug surfaced setting this up: the workflow initially called bare `pytest`, which — unlike `python -m pytest`, used throughout local development — doesn't add the project root to `sys.path` on its own, causing every test file's `from src...` import to fail with `ModuleNotFoundError`. Fixed with a `pytest.ini` declaring `pythonpath = .`, which makes `pytest` resolve the project root the same way regardless of how it's invoked.
+
+### Deployment
+The containerized service is deployed on Render's free tier, auto-deploying from GitHub on every push to `main`. Live at the URL below. Verified independently from a third machine entirely separate from both the development machine and Render's own infrastructure: `/health` returns 200, and `/predict` returns the exact same probability as every offline run throughout this project, confirming the deployed service is consistent with the training pipeline down to the floating-point value.
+
+**Live API:** https://sba-loan-risk.onrender.com (see `/docs` for interactive testing — the free tier spins down after inactivity, so the first request after idle time can take up to ~50 seconds to wake back up)
+
+### Known Limitations / Future Work
+`scikit-learn` is currently unpinned in `requirements.txt` (`>=1.3`). The committed model was trained against scikit-learn 1.8.0, but a fresh environment today resolves 1.9.1, which produces an `InconsistentVersionWarning` on unpickling — predictions have remained correct so far, but scikit-learn's own documentation warns this can silently break across large enough version gaps. Worth pinning exactly to the trained version as a follow-up.
